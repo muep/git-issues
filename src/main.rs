@@ -1,4 +1,4 @@
-use clap::{arg, App, AppSettings, Arg};
+use clap::{App, AppSettings, Arg};
 use serde::Deserialize;
 use std::fs::read_to_string;
 
@@ -65,6 +65,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .help("Jira URL")
         .required(true);
 
+    let user_parg = Arg::new("user")
+        .value_name("USER")
+        .help("User account (email address) to Jira")
+        .required(true);
+
     let matches = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .about("Produce issue lists from git logs")
@@ -74,15 +79,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .about("Check connectivity with Jira")
                 .arg(&token_arg)
                 .arg(&url_parg)
-                .arg(arg!(<USER> "User account (email address) to Jira")),
+                .arg(&user_parg),
         )
         .subcommand(
             App::new(SC_ISSUE_SUMMARY)
                 .about("Get an issue summary from Jira")
                 .arg(token_arg)
                 .arg(url_parg)
-                .arg(arg!(<USER> "User account (email address) to Jira"))
-                .arg(arg!(<ISSUE> "Jira issue")),
+                .arg(user_parg)
+                .arg(
+                    Arg::new("issue")
+                        .value_name("ISSUE")
+                        .help("Jira issue")
+                        .required(true),
+                ),
         )
         .get_matches();
 
@@ -90,18 +100,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some((SC_CHECK_JIRA, sub_matches)) => {
             let token = read_to_string(sub_matches.value_of("token").unwrap()).unwrap();
             check_jira(
-                sub_matches.value_of("URL").unwrap(),
-                sub_matches.value_of("USER").unwrap(),
+                sub_matches.value_of("jira-url").unwrap(),
+                sub_matches.value_of("user").unwrap(),
                 token.trim(),
             )
             .await
         }
         Some((SC_ISSUE_SUMMARY, sub_matches)) => {
             let token = read_to_string(sub_matches.value_of("token").unwrap()).unwrap();
-            let issue = sub_matches.value_of("ISSUE").unwrap();
+            let issue = sub_matches.value_of("issue").unwrap();
             let summary = issue_summary(
                 sub_matches.value_of("jira-url").unwrap(),
-                sub_matches.value_of("USER").unwrap(),
+                sub_matches.value_of("user").unwrap(),
                 token.trim(),
                 issue,
             )
