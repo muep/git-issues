@@ -1,6 +1,6 @@
 use clap::{App, AppSettings, Arg};
 use serde::Deserialize;
-use std::fs::read_to_string;
+use simple_config_parser::Config;
 
 #[derive(Debug, Deserialize)]
 struct Fields {
@@ -52,41 +52,23 @@ async fn issue_summary(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let token_arg = Arg::new("token")
-        .short('t')
-        .long("token")
+    let config_arg = Arg::new("config")
+        .short('c')
+        .long("config")
         .takes_value(true)
-        .value_name("TOKEN")
-        .help("Path to file with Personal access token")
-        .required(true);
-
-    let url_parg = Arg::new("jira-url")
-        .value_name("URL")
-        .help("Jira URL")
-        .required(true);
-
-    let user_parg = Arg::new("user")
-        .value_name("USER")
-        .help("User account (email address) to Jira")
+        .value_name("CONFIG")
+        .help("Path to config file")
         .required(true);
 
     let matches = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .about("Produce issue lists from git logs")
         .setting(AppSettings::SubcommandRequiredElseHelp)
-        .subcommand(
-            App::new(SC_CHECK_JIRA)
-                .about("Check connectivity with Jira")
-                .arg(&token_arg)
-                .arg(&url_parg)
-                .arg(&user_parg),
-        )
+        .arg(config_arg)
+        .subcommand(App::new(SC_CHECK_JIRA).about("Check connectivity with Jira"))
         .subcommand(
             App::new(SC_ISSUE_SUMMARY)
                 .about("Get an issue summary from Jira")
-                .arg(token_arg)
-                .arg(url_parg)
-                .arg(user_parg)
                 .arg(
                     Arg::new("issue")
                         .value_name("ISSUE")
@@ -96,22 +78,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .get_matches();
 
+    let config = {
+        let config_path = matches.value_of("config").unwrap();
+        Config::new().file(config_path).unwrap()
+    };
+
     match matches.subcommand() {
-        Some((SC_CHECK_JIRA, sub_matches)) => {
-            let token = read_to_string(sub_matches.value_of("token").unwrap()).unwrap();
+        Some((SC_CHECK_JIRA, _)) => {
+            let token = config.get_str("jira-token").unwrap();
             check_jira(
-                sub_matches.value_of("jira-url").unwrap(),
-                sub_matches.value_of("user").unwrap(),
+                &config.get_str("jira-url").unwrap(),
+                &config.get_str("jira-user").unwrap(),
                 token.trim(),
             )
             .await
         }
         Some((SC_ISSUE_SUMMARY, sub_matches)) => {
-            let token = read_to_string(sub_matches.value_of("token").unwrap()).unwrap();
+            let token = config.get_str("jira-token").unwrap();
             let issue = sub_matches.value_of("issue").unwrap();
             let summary = issue_summary(
-                sub_matches.value_of("jira-url").unwrap(),
-                sub_matches.value_of("user").unwrap(),
+                &config.get_str("jira-url").unwrap(),
+                &config.get_str("jira-user").unwrap(),
                 token.trim(),
                 issue,
             )

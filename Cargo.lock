@@ -168,6 +168,7 @@ dependencies = [
  "clap",
  "reqwest",
  "serde",
+ "simple_config_parser",
  "tokio",
 ]
 
@@ -705,6 +706,12 @@ checksum = "e51e73328dc4ac0c7ccbda3a494dfa03df1de2f46018127f60c693f2648455b0"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "simple_config_parser"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d562b7cb7cef3d30257e59582674255342665ced8462ad861412e074c653b11"
 
 [[package]]
 name = "slab"
