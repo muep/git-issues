@@ -24,19 +24,8 @@ jobs:
       run: cargo test --verbose
     - name: Release build
       run: cargo build --release
-    - name: Install aarch64 toolchain
-      run: rustup target add aarch64-unknown-linux-gnu
-    - name: Install aarch64 linker
-      run: sudo apt-get -y install gcc-aarch64-linux-gnu
-    - name: Build release mode aarch64
-      run: cargo build --release --target=aarch64-unknown-linux-gnu
     - name: Archive the release executable
       uses: actions/upload-artifact@v2
       with:
         name: git-issues.amd64
         path: target/release/git-issues
-    - name: Archive the release aarch64 executable
-      uses: actions/upload-artifact@v2
-      with:
-        name: git-issues.aarch64
-        path: target/aarch64-unknown-linux-gnu/release/git-issues      
