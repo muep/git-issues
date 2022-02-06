@@ -1,18 +1,21 @@
 use clap::{App, AppSettings, Arg};
+use regex::Regex;
 use serde::Deserialize;
 use simple_config_parser::Config;
+use std::collections::HashSet;
 
 #[derive(Debug, Deserialize)]
-struct Fields {
+struct IssueResponseFields {
     summary: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct Issue {
-    fields: Fields,
+struct IssueResponse {
+    fields: IssueResponseFields,
 }
 
 const SC_ISSUE_SUMMARY: &str = "jira-issue-summary";
+const SC_ISSUES_FROM_STDIN: &str = "issues-from-stdin";
 const SC_CHECK_JIRA: &str = "check-jira";
 
 async fn check_jira(url: &str, user: &str, token: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -39,15 +42,32 @@ async fn issue_summary(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
 
-    let body = client
+    let response = client
         .get(format!("{}/rest/api/3/issue/{}", url, issue))
         .basic_auth(user, Some(token))
         .send()
         .await?
-        .json::<Issue>()
+        .json::<IssueResponse>()
         .await?;
 
-    Ok(body.fields.summary)
+    Ok(response.fields.summary)
+}
+
+fn issues_from_text<'a>(
+    prefix: &str,
+    text: &'a str,
+) -> Result<HashSet<(u32, &'a str)>, Box<dyn std::error::Error>> {
+    let rx = Regex::new(&format!(r"{}(?P<id>\d+)", prefix))?;
+
+    Ok(rx
+        .find_iter(text)
+        .map(|m| {
+            let s = m.as_str();
+            let caps = rx.captures(s).unwrap();
+            let id: u32 = caps["id"].parse().unwrap();
+            (id, s)
+        })
+        .collect())
 }
 
 #[tokio::main]
@@ -58,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .takes_value(true)
         .value_name("CONFIG")
         .help("Path to config file")
-        .required(true);
+        .required(false);
 
     let matches = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
@@ -66,6 +86,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .arg(config_arg)
         .subcommand(App::new(SC_CHECK_JIRA).about("Check connectivity with Jira"))
+        .subcommand(
+            App::new(SC_ISSUES_FROM_STDIN)
+                .about("Collect and print issue references from stdin")
+                .arg(
+                    Arg::new("issue-prefix")
+                        .value_name("PREFIX")
+                        .help("Prefix before issue number")
+                        .required(true),
+                ),
+        )
         .subcommand(
             App::new(SC_ISSUE_SUMMARY)
                 .about("Get an issue summary from Jira")
@@ -78,9 +108,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .get_matches();
 
-    let config = {
-        let config_path = matches.value_of("config").unwrap();
-        Config::new().file(config_path).unwrap()
+    let config = match matches.value_of("config") {
+        Some(config_path) => Config::new().file(config_path).unwrap(),
+        None => Config::new(),
     };
 
     match matches.subcommand() {
@@ -108,6 +138,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             Ok(())
         }
-        _ => Ok(()),
+        Some((SC_ISSUES_FROM_STDIN, sub_matches)) => {
+            use std::io::Read;
+
+            let prefix = sub_matches.value_of("issue-prefix").unwrap();
+            let input = {
+                let mut buf = String::new();
+                std::io::stdin().read_to_string(&mut buf)?;
+                buf
+            };
+
+            let issues: Vec<&str> = {
+                let mut issues: Vec<(u32, &str)> =
+                    issues_from_text(&prefix, &input)?.into_iter().collect();
+
+                issues.sort_by_key(|(id, _)| *id);
+                issues.into_iter().map(|(_, issue)| issue).collect()
+            };
+
+            for issue in issues {
+                println!("{}", issue);
+            }
+
+            Ok(())
+        }
+        _ => panic!(
+            "subcommand {} is not implemented",
+            matches.subcommand_name().unwrap()
+        ),
     }
 }
